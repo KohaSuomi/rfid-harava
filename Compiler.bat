@@ -1,6 +1,6 @@
 @echo off
 rem Build the executables using PyInstaller
-py -m PyInstaller --onefile --windowed --icon=harava.png --name RfidHarava main.py
+py -m PyInstaller --onefile --windowed --icon=harava.ico --name RfidHarava main.py
 
 rem Set the release directory name
 set RELEASE_DIR=Release
