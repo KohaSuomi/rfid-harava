@@ -1,0 +1,103 @@
+# Builds the Windows executable and packages the release archive.
+#
+# Standard GitHub-hosted runners are free on public repositories, so the
+# windows-latest VM here costs nothing. PyInstaller cannot cross-compile, so
+# the build has to happen on a Windows runner.
+#
+# Tag a v* release to cut a release; dispatch the workflow by hand to build
+# without publishing. The version in Configs/ConfigBase.ini is the source of
+# truth and is checked against the tag on release builds.
+
+name: Build
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version: '3.12'
+
+      - name: Install build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install PySide6==6.8.0.2 requests==2.31.0 pyinstaller==6.15.0
+
+      # Only on release builds. Fails the tag rather than shipping a package
+      # whose version and tag disagree, which is easy to miss by hand.
+      - name: Check version against tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $version = (Select-String -Path 'Configs\ConfigBase.ini' -Pattern '^\s*version\s*=\s*(.+)$').Matches.Groups[1].Value.Trim()
+          $tag = $env:GITHUB_REF_NAME -replace '^v', ''
+          if ($version -ne $tag) {
+            Write-Error "Configs\ConfigBase.ini has version '$version' but the tag is '$tag'. Update the version before tagging."
+            exit 1
+          }
+          Write-Host "Version $version matches tag $tag"
+
+      - name: Build executable and assemble release folder
+        shell: cmd
+        run: Compiler.bat
+
+      # Catches the classic packaging failure where the build succeeds but the
+      # exe dies on startup - missing DLLs, Qt platform plugin, bad resources.
+      # main.py creates logs/ as its first real action and redirects stdout
+      # into it, so a log file is proof the app got past startup. With
+      # --windowed there is no console to watch and sys.exit(1) on an uncaught
+      # exception means a dead process is a failed build.
+      - name: Smoke test the executable
+        shell: pwsh
+        run: |
+          $exe = 'Release\RfidHarava\RfidHarava.exe'
+          $proc = Start-Process -FilePath $exe -WorkingDirectory 'Release\RfidHarava' -PassThru
+          Start-Sleep -Seconds 45
+          if ($proc.HasExited) {
+            throw "Executable exited early with code $($proc.ExitCode)"
+          }
+          Stop-Process -Id $proc.Id -Force
+          $log = Get-ChildItem 'Release\RfidHarava\logs\output_*.log' -ErrorAction SilentlyContinue
+          if (-not $log) {
+            throw 'Executable did not write a log file - it did not start correctly'
+          }
+          if ((Get-Item $log.FullName).Length -eq 0) {
+            throw 'Log file is empty - the app produced no output'
+          }
+          Write-Host "Smoke test passed, log: $($log.Name)"
+
+      - name: Package release archive
+        shell: pwsh
+        run: |
+          $version = (Select-String -Path 'Configs\ConfigBase.ini' -Pattern '^\s*version\s*=\s*(.+)$').Matches.Groups[1].Value.Trim()
+          Compress-Archive -Path Release\* -DestinationPath "Harava$version.zip"
+          Write-Host "Created Harava$version.zip"
+
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: harava-windows
+          path: Harava*.zip
+
+      - name: Publish GitHub release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $version = (Select-String -Path 'Configs\ConfigBase.ini' -Pattern '^\s*version\s*=\s*(.+)$').Matches.Groups[1].Value.Trim()
+          gh release create $env:GITHUB_REF_NAME "Harava$version.zip" `
+            --repo $env:GITHUB_REPOSITORY `
+            --title "RFID Harava $version" `
+            --generate-notes
