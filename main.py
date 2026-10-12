@@ -330,12 +330,12 @@ def main_loop():
         def decode_safely(decoder, hex_string, length_byte, start_index):
             """Run a decoder and return None if the payload cannot be parsed.
 
-            isoDecoder, integerDecoder and decode7Bit raise ValueError on
-            input they cannot decode. An uncaught ValueError reaches the
-            sys.excepthook installed by main_loop, which exits the app, so a
-            single unreadable tag would end the scan session. numericDecoder
-            already catches its own ValueError; routing it through here keeps
-            the eight call sites uniform.
+            All five decoders now catch their own ValueError and return None,
+            so this is a safety net rather than the primary guard: a decoder
+            that raises would otherwise reach the sys.excepthook installed by
+            main_loop and exit the app mid-scan. Keep it when adding decoders,
+            and note that a None here is dropped by the `if barcode:` check
+            below rather than reaching Koha.
             """
             try:
                 return decoder(hex_string, length_byte, start_index)

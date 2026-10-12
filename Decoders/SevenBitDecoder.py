@@ -46,17 +46,17 @@ def bits_to_ascii(segments):
     return ascii_string
 
 def decode7Bit(hex_input, lenght_byte, start_index):
-    """Main function to decode a given hex string into ASCII characters."""
-    bitstring = hex_to_bitstring(hex_input, lenght_byte, start_index)
-    
-    if not bitstring:
+    """Main function to decode a given hex string into ASCII characters.
+
+    Returns None when the payload cannot be decoded, matching numericDecoder.
+    """
+    try:
+        bitstring = hex_to_bitstring(hex_input, lenght_byte, start_index)
+        segments = decode_7bit(bitstring)
+        ascii_string = bits_to_ascii(segments)
+        return ascii_string
+    except ValueError:
         return None
-    
-    segments = decode_7bit(bitstring)
-    
-    ascii_string = bits_to_ascii(segments)
-    
-    return ascii_string
 
 if __name__ == "__main__":
     hex_input = "0451464954001d000604c1020b3160532f1cb3e79df7c39880800201a80501106702001d0006"

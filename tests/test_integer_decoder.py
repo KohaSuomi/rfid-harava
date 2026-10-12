@@ -57,8 +57,14 @@ class TestIntegerDecoder:
         expected = str(DecodeInteger(hex_to_bitstring(SAMPLE, 4, 6)))
         assert integerDecoder(SAMPLE, 4, 6) == expected
 
-    def test_empty_input_raises_value_error(self):
-        # Documented quirk: integerDecoder propagates ValueError rather than
-        # returning None, making the guard at IntegerDecoder.py:28 dead code.
-        with pytest.raises(ValueError):
-            integerDecoder("", 4, 6)
+    def test_empty_input_returns_none(self):
+        # Returns None on undecodable input, matching numericDecoder, rather
+        # than raising. main.py relies on a falsy result to skip the tag.
+        assert integerDecoder("", 4, 6) is None
+
+    def test_zero_length_byte_returns_none(self):
+        # A zero length byte makes the slice empty, which int() rejects.
+        assert integerDecoder("04110000", 4, 6) is None
+
+    def test_non_hex_data_returns_none(self):
+        assert integerDecoder("0411zz", 4, 6) is None

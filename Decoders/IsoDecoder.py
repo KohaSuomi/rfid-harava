@@ -50,17 +50,17 @@ def bits_to_iso_646(segments):
 
 
 def isoDecoder(hex_input, lenght_byte, start_index):
-    """Main function to decode a given hex string into ISO 646 characters."""
-    bitstring = hex_to_bitstring(hex_input, lenght_byte, start_index)
+    """Main function to decode a given hex string into ISO 646 characters.
 
-    if bitstring is None:
+    Returns None when the payload cannot be decoded, matching numericDecoder.
+    """
+    try:
+        bitstring = hex_to_bitstring(hex_input, lenght_byte, start_index)
+        segments = Decode6Bit(bitstring)
+        iso_string = bits_to_iso_646(segments)
+        return iso_string
+    except ValueError:
         return None
-    
-    segments = Decode6Bit(bitstring)
-    
-    iso_string = bits_to_iso_646(segments)
-    
-    return iso_string
 
 
 if __name__ == "__main__":

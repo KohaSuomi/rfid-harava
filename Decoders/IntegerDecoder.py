@@ -22,14 +22,16 @@ def DecodeInteger(bitstring):
     return int(bitstring, 2)
 
 def integerDecoder(hex_input, lenght_byte, start_index):
-    """Main function to decode a given hex string into a concatenated number string."""
-    bitstring = hex_to_bitstring(hex_input, lenght_byte, start_index)
-    
-    if bitstring is None:
+    """Main function to decode a given hex string into a concatenated number string.
+
+    Returns None when the payload cannot be decoded, matching numericDecoder.
+    """
+    try:
+        bitstring = hex_to_bitstring(hex_input, lenght_byte, start_index)
+        number = DecodeInteger(bitstring)
+        return str(number)
+    except ValueError:
         return None
-    
-    number = DecodeInteger(bitstring)
-    return str(number)
 
 if __name__ == "__main__":
     hex_input = "041110619F0CD7BFB770201A80501106702424103063240BE3E8B0F"

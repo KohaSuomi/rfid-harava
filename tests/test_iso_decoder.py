@@ -75,12 +75,17 @@ class TestIsoDecoder:
         result = isoDecoder(SAMPLE, 4, 6)
         assert result.isalnum()
 
-    def test_empty_input_raises_value_error(self):
-        # Documented quirk: isoDecoder propagates ValueError from
-        # hex_to_bitstring instead of returning None, so the None guard at
-        # IsoDecoder.py:56 can never fire.
-        with pytest.raises(ValueError):
-            isoDecoder("", 4, 6)
+    def test_empty_input_returns_none(self):
+        # Returns None on undecodable input, matching numericDecoder, rather
+        # than raising. main.py relies on a falsy result to skip the tag.
+        assert isoDecoder("", 4, 6) is None
+
+    def test_zero_length_byte_returns_none(self):
+        # A zero length byte makes the slice empty, which int() rejects.
+        assert isoDecoder("04c10000", 6, 8) is None
+
+    def test_non_hex_data_returns_none(self):
+        assert isoDecoder("04c1zz", 6, 8) is None
 
 
 class TestDecode6BitPipeline:

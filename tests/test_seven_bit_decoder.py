@@ -73,8 +73,14 @@ class TestDecode7BitEntryPoint:
         segments = decode_7bit(hex_to_bitstring(SAMPLE, 4, 6))
         assert decode7Bit(SAMPLE, 4, 6) == bits_to_ascii(segments)
 
-    def test_empty_input_raises_value_error(self):
-        # Documented quirk: decode7Bit propagates ValueError from
-        # hex_to_bitstring rather than returning None.
-        with pytest.raises(ValueError):
-            decode7Bit("", 4, 6)
+    def test_empty_input_returns_none(self):
+        # Returns None on undecodable input, matching numericDecoder, rather
+        # than raising. main.py relies on a falsy result to skip the tag.
+        assert decode7Bit("", 4, 6) is None
+
+    def test_zero_length_byte_returns_none(self):
+        # A zero length byte makes the slice empty, which int() rejects.
+        assert decode7Bit("04510000", 4, 6) is None
+
+    def test_non_hex_data_returns_none(self):
+        assert decode7Bit("0451zz", 4, 6) is None
