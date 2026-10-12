@@ -1,6 +1,7 @@
 @echo off
 rem Build the executables using PyInstaller
 py -m PyInstaller --onefile --windowed --icon=harava.ico --name RfidHarava main.py
+if errorlevel 1 exit /b 1
 
 rem Set the release directory name
 set RELEASE_DIR=Release
@@ -11,6 +12,7 @@ if not exist %RELEASE_DIR%\RfidHarava mkdir %RELEASE_DIR%\RfidHarava
 
 rem Copy the built executables to the release directory
 copy dist\RfidHarava.exe %RELEASE_DIR%\RfidHarava\
+if errorlevel 1 exit /b 1
 copy harava.png %RELEASE_DIR%\RfidHarava\
 
 rem Config folder
