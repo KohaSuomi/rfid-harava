@@ -1,0 +1,16 @@
+# Pytest configuration only.
+#
+# This project is not distributed as a package - PyInstaller bundles main.py
+# directly - so there is deliberately no [build-system] or [project] table
+# here. The test suite is the only consumer of this file.
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+# The repo has no __init__.py in any subdirectory, so imports such as
+# `import Decoders.IsoDecoder` rely on PEP 420 namespace packages. Those only
+# resolve when the repo root is on sys.path, which running `pytest` from
+# anywhere else would not guarantee. Setting pythonpath here makes the suite
+# independent of the working directory instead of relying on an implicit
+# rootdir conftest side effect.
+pythonpath = ["."]

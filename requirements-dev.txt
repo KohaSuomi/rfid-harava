@@ -1,0 +1,12 @@
+# Development and test dependencies.
+#
+# Runtime dependencies (PySide6, requests) are intentionally NOT listed here:
+# they are only documented in readme.md prose and the CI build job, and adding
+# them here would imply the test suite needs them, which it does not.
+#
+# Everything under test/ is standard library only, so this is the sole
+# requirement needed to run the test suite:
+#   python -m pip install -r requirements-dev.txt
+#   python -m pytest
+
+pytest==9.1.1
