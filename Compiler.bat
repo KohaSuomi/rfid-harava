@@ -33,4 +33,5 @@ if not exist %RELEASE_DIR%\RfidHarava\logs mkdir %RELEASE_DIR%\RfidHarava\logs
 
 if not exist %RELEASE_DIR%\RfidHarava\Lists mkdir %RELEASE_DIR%\RfidHarava\Lists
 
-pause
+rem Close the window when done. No pause, so this also runs unattended in CI.
+exit /b %errorlevel%
