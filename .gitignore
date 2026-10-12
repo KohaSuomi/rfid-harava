@@ -1,0 +1,21 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Koha API-tunnukset (client / secret) ja käyttäjän asetukset.
+# Configs/config.ini luodaan kopioimalla Configs/ConfigBase.ini.
+Configs/config.ini
+Configs/UserSettings.ini
+
+# Käännöksen tulosteet
+Release/
+dist/
+build/
+*.spec
+
+# Ajonaikaiset lokit ja lista-aineistot
+logs/
+Lists/
