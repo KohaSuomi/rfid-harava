@@ -327,6 +327,22 @@ def main_loop():
                 EncodedData.extend(Messagesplitter.split_and_process(response))
                 logger.debug(f"EncodedData after processing: {EncodedData}")
 
+        def decode_safely(decoder, hex_string, length_byte, start_index):
+            """Run a decoder and return None if the payload cannot be parsed.
+
+            isoDecoder, integerDecoder and decode7Bit raise ValueError on
+            input they cannot decode. An uncaught ValueError reaches the
+            sys.excepthook installed by main_loop, which exits the app, so a
+            single unreadable tag would end the scan session. numericDecoder
+            already catches its own ValueError; routing it through here keeps
+            the eight call sites uniform.
+            """
+            try:
+                return decoder(hex_string, length_byte, start_index)
+            except ValueError as e:
+                logger.warning(f'{decoder.__name__} could not decode tag: {e}')
+                return None
+
         # Process each encoded data item
         for encoded in EncodedData:  
             # Check the starting bytes of data to route it to correct decoder
@@ -341,9 +357,13 @@ def main_loop():
                 decoder = FINDecoder(hex_string)  # Create an instance of FINDecoder
                 barcode = decoder.decode()
                 logger.debug(f"Decoded FIN Barcode: {barcode}")
-                barcode = barcode.upper()
-                # Append the decoded barcode to the barcodes array
-                barcodes.append(barcode)
+                # A falsy decode means nothing usable was read: numericDecoder
+                # returns None and the others can return '', either of which
+                # would raise on .upper() or send an empty barcode to Koha.
+                if barcode:
+                    barcodes.append(barcode.upper())
+                else:
+                    logger.warning('Skipped undecodable barcode')
 
             # 6Bit decoder
             elif encoded.startswith('04c1') or encoded.startswith('0441'):
@@ -352,22 +372,28 @@ def main_loop():
                     hex_string = encoded
                     lenght_byte = 6
                     start_index = 8
-                    decodedData = IsoDecoder.isoDecoder(hex_string, lenght_byte, start_index)
+                    decodedData = decode_safely(IsoDecoder.isoDecoder, hex_string, lenght_byte, start_index)
                     barcode = decodedData
                     logger.debug(f"Decoded ISO Barcode (locked) 6bit: {barcode}")
-                    barcode = barcode.upper()
-                    barcodes.append(barcode)
+                    # Skip a falsy decode (None or '') - see the note above.
+                    if barcode:
+                        barcodes.append(barcode.upper())
+                    else:
+                        logger.warning('Skipped undecodable barcode')
                 
                 # Unlocked Tag
                 elif encoded.startswith('0441'):
                     hex_string = encoded
                     lenght_byte = 4
                     start_index = 6
-                    decodedData = IsoDecoder.isoDecoder(hex_string, lenght_byte, start_index)
+                    decodedData = decode_safely(IsoDecoder.isoDecoder, hex_string, lenght_byte, start_index)
                     barcode = decodedData
                     logger.debug(f"Decoded ISO Barcode (unlocked) 6bit: {barcode}")
-                    barcode = barcode.upper()
-                    barcodes.append(barcode)
+                    # Skip a falsy decode (None or '') - see the note above.
+                    if barcode:
+                        barcodes.append(barcode.upper())
+                    else:
+                        logger.warning('Skipped undecodable barcode')
             
             # Integer decoder
             elif encoded.startswith('0491') or encoded.startswith('0411'):
@@ -376,22 +402,28 @@ def main_loop():
                     hex_string = encoded
                     lenght_byte = 6
                     start_index = 8
-                    decodedData = IntegerDecoder.integerDecoder(hex_string, lenght_byte, start_index)
+                    decodedData = decode_safely(IntegerDecoder.integerDecoder, hex_string, lenght_byte, start_index)
                     barcode = decodedData
                     logger.debug(f"Decoded ISO Barcode (locked) int: {barcode}")
-                    barcode = barcode.upper()
-                    barcodes.append(barcode)
+                    # Skip a falsy decode (None or '') - see the note above.
+                    if barcode:
+                        barcodes.append(barcode.upper())
+                    else:
+                        logger.warning('Skipped undecodable barcode')
                     
                 # Unlocked Tag
                 if encoded.startswith('0411'):
                     hex_string = encoded
                     lenght_byte = 4
                     start_index = 6
-                    decodedData = IntegerDecoder.integerDecoder(hex_string, lenght_byte, start_index)
+                    decodedData = decode_safely(IntegerDecoder.integerDecoder, hex_string, lenght_byte, start_index)
                     barcode = decodedData
                     logger.debug(f"Decoded ISO Barcode (unlocked) int: {barcode}")
-                    barcode = barcode.upper()
-                    barcodes.append(barcode)
+                    # Skip a falsy decode (None or '') - see the note above.
+                    if barcode:
+                        barcodes.append(barcode.upper())
+                    else:
+                        logger.warning('Skipped undecodable barcode')
                     
             elif encoded.startswith('04a1') or encoded.startswith('0421'):
                 # Locked Tag
@@ -399,22 +431,28 @@ def main_loop():
                     hex_string = encoded
                     lenght_byte = 6
                     start_index = 8
-                    decodedData = NumericDecoder.numericDecoder(hex_string, lenght_byte, start_index)
+                    decodedData = decode_safely(NumericDecoder.numericDecoder, hex_string, lenght_byte, start_index)
                     barcode = decodedData
                     logger.debug(f"Decoded ISO Barcode (locked) num: {barcode}")
-                    barcode = barcode.upper()
-                    barcodes.append(barcode)
+                    # Skip a falsy decode (None or '') - see the note above.
+                    if barcode:
+                        barcodes.append(barcode.upper())
+                    else:
+                        logger.warning('Skipped undecodable barcode')
                     
                 # Unlocked Tag
                 if encoded.startswith('0421'):
                     hex_string = encoded
                     lenght_byte = 4
                     start_index = 6
-                    decodedData = NumericDecoder.numericDecoder(hex_string, lenght_byte, start_index)
+                    decodedData = decode_safely(NumericDecoder.numericDecoder, hex_string, lenght_byte, start_index)
                     barcode = decodedData
                     logger.debug(f"Decoded ISO Barcode (unlocked) num: {barcode}")
-                    barcode = barcode.upper()
-                    barcodes.append(barcode)
+                    # Skip a falsy decode (None or '') - see the note above.
+                    if barcode:
+                        barcodes.append(barcode.upper())
+                    else:
+                        logger.warning('Skipped undecodable barcode')
                     
             elif encoded.startswith('04d1') or encoded.startswith('0451'):
                 # Locked Tag
@@ -422,22 +460,28 @@ def main_loop():
                     hex_string = encoded
                     lenght_byte = 6
                     start_index = 8
-                    decodedData = SevenBitDecoder.decode7Bit(hex_string, lenght_byte, start_index)
+                    decodedData = decode_safely(SevenBitDecoder.decode7Bit, hex_string, lenght_byte, start_index)
                     barcode = decodedData
                     logger.debug(f"Decoded ISO Barcode (locked) 7bit : {barcode}")
-                    barcode = barcode.upper()
-                    barcodes.append(barcode)
+                    # Skip a falsy decode (None or '') - see the note above.
+                    if barcode:
+                        barcodes.append(barcode.upper())
+                    else:
+                        logger.warning('Skipped undecodable barcode')
                     
                 # Unlocked Tag
                 if encoded.startswith('0451'):
                     hex_string = encoded
                     lenght_byte = 4
                     start_index = 6
-                    decodedData = SevenBitDecoder.decode7Bit(hex_string, lenght_byte, start_index)
+                    decodedData = decode_safely(SevenBitDecoder.decode7Bit, hex_string, lenght_byte, start_index)
                     barcode = decodedData
                     logger.debug(f"Decoded ISO Barcode (unlocked) 7bit : {barcode}")
-                    barcode = barcode.upper()
-                    barcodes.append(barcode)
+                    # Skip a falsy decode (None or '') - see the note above.
+                    if barcode:
+                        barcodes.append(barcode.upper())
+                    else:
+                        logger.warning('Skipped undecodable barcode')
 
             # Detect RFID tags that have no written data
             elif encoded.startswith('0400000000000000'):

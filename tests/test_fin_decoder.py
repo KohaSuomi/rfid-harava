@@ -145,12 +145,34 @@ class TestDecode:
         uppercase = VALID_HEX.upper()
         assert FINDecoder(uppercase).decode() == "853N06240600"
 
-    def test_invalid_hex_returns_empty_tuple(self):
-        # Documented quirk: the early-exit path at FINDecoder.py:78 returns a
-        # 3-tuple while the success path returns a bare string. Callers that
-        # unpack a tuple will break on valid input.
+    def test_invalid_hex_returns_empty_string(self):
+        # Invalid input used to return a 3-tuple here while the success path
+        # returned a bare string. main.py calls .upper() on the result
+        # unconditionally, so that raised AttributeError and took down the
+        # scan. Every path now returns a str.
         result = FINDecoder("zz1101").decode()
-        assert result == ("", "0x0", "")
+        assert result == ""
+
+    @pytest.mark.parametrize(
+        "hex_string",
+        [
+            "1101003835334e3036323430363030000000003850464954001d0006",
+            "zz1101",
+            "110100383",
+            "",
+            "00",
+            "110100",
+        ],
+    )
+    def test_always_returns_a_string(self, hex_string):
+        # Regression guard for the return-type inconsistency. Any path that
+        # returns a non-str breaks the caller's .upper() call.
+        assert isinstance(FINDecoder(hex_string).decode(), str)
+
+    @pytest.mark.parametrize("hex_string", ["zz1101", "110100383", ""])
+    def test_result_is_safe_to_uppercase(self, hex_string):
+        # Mirrors what main.py does with the decoded barcode.
+        assert FINDecoder(hex_string).decode().upper() == ""
 
     def test_empty_input_decodes_to_empty_string(self):
         # Follows from is_valid_hex("") being True: data is b"", so read_bytes(3)

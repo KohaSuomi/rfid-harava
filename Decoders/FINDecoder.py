@@ -72,25 +72,27 @@ class FINDecoder:
         return self.decode_utf8_string(collected_bytes)
 
     def decode(self):
-        """Decode the Primary Item ID and return it."""
+        """Decode the Primary Item ID and return it as a string.
+
+        Returns an empty string for invalid input. The caller in main.py
+        uppercases the result unconditionally, so this must stay a str on
+        every path: returning a tuple here raised AttributeError and took
+        the whole scan down.
+        """
         # Skip the fixed prefix (11 01 01)
         if self.read_bytes(3) is None:
-            return "", "0x0", ""
-        
+            return ""
+
         # Read the variable-length primary item ID (up to 16 bytes)
         primary_item_id = self.decode_variable_length_string(16)
         crc = hex(self.decode_crc())
         data_block_info = self.decode_data_block()
-        
+
         return primary_item_id # crc, data_block_info
 
 if __name__ == "__main__":
     hex_string = "1101003835334e3036323430363030000000003850464954001d0006"
     decoder = FINDecoder(hex_string)
     primary_item_id = decoder.decode()
-    #primary_item_id, crc, data_block_info = decoder.decode()
-
 
     print(f"Primary Item ID: {primary_item_id}")
-    #print(f"CRC: {crc}")
-    #print(f"Data Block Info: {data_block_info}")
