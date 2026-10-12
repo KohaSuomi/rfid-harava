@@ -1,0 +1,79 @@
+SELECT 
+    items.biblionumber,
+    items.itemnumber,
+    items.itemlost,
+    IF(items.notforloan != 0, (SELECT SUBSTRING(av.lib, 1, 5) FROM authorised_values av WHERE av.category = 'NOT_LOAN' AND av.authorised_value = items.notforloan), items.notforloan) AS notforloan,
+    items.homebranch,
+    items.holdingbranch,
+    items.deleted_on,
+    items.onloan,
+    items.datelastborrowed,
+    items.itemcallnumber,
+    items.barcode,
+    items.permanent_location,
+    biblio.title,
+    COALESCE(reserves_summary.found, NULL) AS found, 
+    department_count.NiteetOsastolla,
+    shelf_count.NiteetHylly,
+    total_count.NiteetYht,
+    items.ccode
+
+FROM items
+LEFT JOIN biblio ON (items.biblionumber = biblio.biblionumber)
+
+
+LEFT JOIN (
+    SELECT
+        itemnumber,
+        found  
+    FROM reserves
+    GROUP BY itemnumber
+) reserves_summary ON (items.itemnumber = reserves_summary.itemnumber)
+
+
+LEFT JOIN (
+    SELECT 
+        biblionumber, 
+        COUNT(itemnumber) AS NiteetHylly
+    FROM items
+    WHERE (<<Kirjastokoodi>> = '' OR (holdingbranch = <<Kirjastokoodi>> AND items.onloan IS NULL)) 
+    GROUP BY biblionumber
+) shelf_count ON items.biblionumber = shelf_count.biblionumber 
+
+LEFT JOIN (
+    SELECT 
+        biblionumber, 
+        COUNT(itemnumber) AS NiteetOsastolla
+    FROM items
+    WHERE (<<Kirjastokoodi>> = '' OR (holdingbranch = <<Kirjastokoodi>> AND items.onloan IS NULL AND items.permanent_location = <<Osastokoodi>>)) 
+    GROUP BY biblionumber
+) department_count ON items.biblionumber = department_count.biblionumber 
+
+LEFT JOIN (
+    SELECT 
+        biblionumber, 
+        COUNT(itemnumber) AS NiteetYht
+    FROM items
+    GROUP BY biblionumber
+) total_count ON items.biblionumber = total_count.biblionumber 
+
+WHERE items.barcode IN <<Viivakoodi|list>>
+GROUP BY 
+    items.biblionumber,
+    items.itemnumber,
+    items.itemlost,
+    items.notforloan,
+    items.homebranch,
+    items.holdingbranch,
+    items.deleted_on,
+    items.onloan,
+    items.datelastborrowed,
+    items.itemcallnumber,
+    items.barcode,
+    items.permanent_location,
+    biblio.title,
+    reserves_summary.found,
+    department_count.NiteetOsastolla,
+    shelf_count.NiteetHylly,
+    total_count.NiteetYht,
+    items.ccode
