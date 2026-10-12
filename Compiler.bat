@@ -15,7 +15,6 @@ copy harava.png %RELEASE_DIR%\RfidHarava\
 
 rem Config folder
 if not exist %RELEASE_DIR%\RfidHarava\Configs mkdir %RELEASE_DIR%\RfidHarava\Configs
-copy Configs\config.ini %RELEASE_DIR%\RfidHarava\Configs
 copy Configs\ConfigBase.ini %RELEASE_DIR%\RfidHarava\Configs\config.ini
 copy Configs\UserSettingsBase.ini %RELEASE_DIR%\RfidHarava\Configs\UserSettings.ini
 
@@ -28,7 +27,7 @@ if not exist %RELEASE_DIR%\RfidHarava\resources mkdir %RELEASE_DIR%\RfidHarava\r
 xcopy resources %RELEASE_DIR%\RfidHarava\resources /s /i /y /q
 
 if not exist %RELEASE_DIR%\Ohjeet mkdir %RELEASE_DIR%\Ohjeet
-xcopy Ohjeet %RELEASE_DIR%\Ohjeet /s /i /y /q
+xcopy docs\Ohjeet %RELEASE_DIR%\Ohjeet /s /i /y /q
 
 if not exist %RELEASE_DIR%\RfidHarava\logs mkdir %RELEASE_DIR%\RfidHarava\logs
 
