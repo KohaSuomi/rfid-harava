@@ -15,10 +15,29 @@ import sys
 import threading
 import time
 
-REPO = '/home/jraisa/rfid-harava'
+HERE = os.path.dirname(os.path.abspath(__file__))
+
+
+def _detect_repo():
+    """Find the repo whether this script sits at its root, in tools/, or anywhere."""
+    env = os.environ.get('HARAVA_REPO')
+    if env:
+        return env
+    here = HERE
+    for _ in range(4):
+        if (os.path.isfile(os.path.join(here, 'main.py'))
+                and os.path.isdir(os.path.join(here, 'GUI'))):
+            return here
+        parent = os.path.dirname(here)
+        if parent == here:
+            break
+        here = parent
+    raise SystemExit('Could not locate the repo root. Set HARAVA_REPO=/path/to/rfid-harava')
+
+
+REPO = _detect_repo()
 sys.path.insert(0, REPO)
 
-HERE = os.path.dirname(os.path.abspath(__file__))
 # Written to the scratch work dir, not next to this file, so a run never
 # leaves artifacts in the repo. tools/sim_run.py is launched by
 # tools/ttldedup_check.py with HARAVA_WORK set.

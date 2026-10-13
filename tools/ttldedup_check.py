@@ -1,6 +1,6 @@
 """One-command check of the TTL dedup fix. No RFID reader, no Windows needed.
 
-    python tools/ttldedup_check.py [seconds] [PySide6 python]
+    python tools/ttldedup_check.py [seconds] [python] [tags]
 
 Starts a throwaway fake Koha API on loopback, points a copy of the app's
 config at it, runs the real main.py while simulating scans by appending to
@@ -150,6 +150,7 @@ def run(python, seconds, fetchttl, tags):
 def main():
     seconds = int(sys.argv[1]) if len(sys.argv) > 1 else 20
     python = sys.argv[2] if len(sys.argv) > 2 else sys.executable
+    python = python or sys.executable
     tags = int(sys.argv[3]) if len(sys.argv) > 3 else 1
 
     print(f'repo   : {REPO}')
