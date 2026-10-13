@@ -65,6 +65,17 @@ class MainWindow(QMainWindow):
 
         self.barcode_column_name = self.config.get('TableSettings', 'barcodecolumnname', fallback='viivakoodi')
 
+        # Barcode -> row for every row currently on screen. Rebuilt whenever
+        # rows are added, deleted or cleared; flash_barcode() reads it to find
+        # the row for a barcode that was scanned again while its API call was
+        # suppressed by the TTL filter in main.py.
+        self.barcode_to_row = {}
+
+        # Row -> flash timer state. One reusable timer per row instead of a new
+        # QTimer on every read, so a barcode sitting in the reader field flashes
+        # steadily rather than stacking dozens of overlapping timers.
+        self._flash_timers = {}
+
         # Fetch and populate data
         self.fetch_and_populate_data()
 
@@ -275,15 +286,28 @@ class MainWindow(QMainWindow):
                 table.horizontalHeader().setSectionHidden(col_index, True)
 
 
-    def add_items_to_table(self, table, items):
-        headers = list(self.DynamicTable.keys())
-        barcode_column_index = headers.index(self.barcode_column_name) + 1 
+    def _rebuild_barcode_to_row(self, table):
+        """Refresh the barcode -> row lookup from the table's current contents.
 
-        barcode_to_row = {}
+        Rebuilding wholesale (rather than patching entries) keeps the lookup
+        correct after row deletion shifts every index below the removed row.
+        """
+        headers = list(self.DynamicTable.keys())
+        barcode_column_index = headers.index(self.barcode_column_name) + 1
+
+        barcode_to_row = self.barcode_to_row
+        barcode_to_row.clear()
         for row in range(table.rowCount()):
             itm = table.item(row, barcode_column_index)
             if itm is not None:
                 barcode_to_row[itm.text()] = row
+
+        return barcode_to_row
+
+    def add_items_to_table(self, table, items):
+        headers = list(self.DynamicTable.keys())
+
+        barcode_to_row = self._rebuild_barcode_to_row(table)
 
         new_items = []
         for item in items:
@@ -346,32 +370,67 @@ class MainWindow(QMainWindow):
 
     
     def flash_row(self, table, row):
+        """Flash a row green/white to show the item was scanned again.
 
+        Reuses one timer per row. Calling this while a row is already flashing
+        resets its countdown instead of starting another timer, so a barcode
+        held in the reader field keeps pulsing and stops about 300 ms after the
+        last re-read.
+        """
+        state = self._flash_timers.get(row)
+        if state is None:
+            state = {'index': 0, 'count': 0}
+            state['timer'] = QTimer(self)
+            state['timer'].timeout.connect(
+                lambda r=row, s=state: self._toggle_flash(table, r, s))
+            self._flash_timers[row] = state
+            state['timer'].start(50)  # Change color every 50 ms
+        else:
+            state['count'] = 0  # keep pulsing while re-reads keep coming
+
+    def flash_barcode(self, barcode):
+        """Flash the row for a barcode, if that barcode is on screen.
+
+        Called from the scan path when the TTL filter suppresses a re-read, so
+        an item already in the table still highlights without an API call.
+        Silently does nothing when the barcode has no row - it may have been
+        fetched without producing a match, or its row may have been deleted.
+        """
+        row = self.barcode_to_row.get(barcode)
+        if row is not None and row < self.table.rowCount():
+            self.flash_row(self.table, row)
+
+    def _toggle_flash(self, table, row, state):
         colors = [QColor(50, 255, 50), QColor(255, 255, 255)]  # green and white colors
-        current_flash_index = [0]  # List to hold the current color index
-        flash_count = 0  # Counter to track the number of flashes
 
-        def toggle_flash():
-            nonlocal flash_count
-            # Alternate between green and white background
+        # Alternate between green and white background
+        for col in range(table.columnCount()):
+            cell = table.item(row, col)
+            if cell is not None:
+                cell.setBackground(colors[state['index']])
+
+        state['index'] = (state['index'] + 1) % 2
+
+        state['count'] += 1
+        if state['count'] >= 6:  # After 3 cycles (6 flashes)
+            # Reset to white and stop the timer
             for col in range(table.columnCount()):
-                if table.item is not None:
-                    table.item(row, col).setBackground(colors[current_flash_index[0]])
-                
-            # Update the flash index to alternate the color
-            current_flash_index[0] = (current_flash_index[0] + 1) % 2
-            
-            flash_count += 1
-            if flash_count >= 6:  # After 3 cycles (6 flashes)
-                # Reset to white and stop the timer
-                for col in range(table.columnCount()):
-                    table.item(row, col).setBackground(colors[1])  # Set background to white
-                flash_timer.stop()
+                cell = table.item(row, col)
+                if cell is not None:
+                    cell.setBackground(colors[1])  # Set background to white
+            state['timer'].stop()
+            self._flash_timers.pop(row, None)
 
-        # Set up a timer to flash the row
-        flash_timer = QTimer(self)
-        flash_timer.timeout.connect(toggle_flash)
-        flash_timer.start(50)  # Change color every 50 ms
+    def _stop_all_flashes(self):
+        """Stop every in-flight flash and drop the timers.
+
+        Timers are keyed by row index, and deleting or clearing rows shifts
+        those indices, so anything still flashing would otherwise light the
+        wrong row.
+        """
+        for state in self._flash_timers.values():
+            state['timer'].stop()
+        self._flash_timers.clear()
 
     def delete_selected_item(self):
         selected_items = self.table.selectedItems()
@@ -383,12 +442,16 @@ class MainWindow(QMainWindow):
             for row in sorted(rows_to_delete, reverse=True):
                 self.table.removeRow(row)
             
+            self._stop_all_flashes()
+            self._rebuild_barcode_to_row(self.table)
             self.table.resizeColumnsToContents()
         else:
             QMessageBox.warning(self, "Ei valintaa", "Valitse poistettava rivi ensin. Voit valita useamman rivin kerralla.")
 
     def clear_table(self, table):
         table.setRowCount(0)
+        self._stop_all_flashes()
+        self.barcode_to_row.clear()
 
     def fetch_and_populate_data(self):
         base_url = ""

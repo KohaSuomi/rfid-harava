@@ -38,6 +38,10 @@ barcodes = barcodesArray
 EncodedData = []
 # Raw data from RFID scanner as continious hexstring
 RawResponses = []
+# Barcode -> time.monotonic() of the last API request for it. The reader
+# re-reports every tag in its field continuously, so without this the same
+# items would be re-requested on every timer tick. See fetch_data.
+fetchedAt = {}
 
 def read_config():
     config = configparser.RawConfigParser()
@@ -65,6 +69,10 @@ def read_config():
         'ReportID': config['Other'].get('ReportID', ''),
         'BatchSize': int(config['Other'].get('BatchSize', 15)),
         'UpdateRate': int(config['Other'].get('UpdateRate', 0.1)),
+        # Seconds a barcode is suppressed after being requested. Read per tick,
+        # so the 5s config reload picks up an edit without a restart. The
+        # `or 60` keeps a blank `fetchttl =` from making int('') raise here.
+        'FetchTTL': int(config['Other'].get('FetchTTL', 60) or 60),
         'HaravaIP': config['Harava'].get('IP', ''),
         'HaravaPort': int(config['Harava'].get('Port', 10001)),
         'CommunicationRate': float(config['Harava'].get('CommunicationRate', 0.15))
@@ -315,6 +323,7 @@ def main_loop():
         global barcodes
         global RawResponses
         global EncodedData
+        global fetchedAt
 
         logger.debug(f"Barcodes available before processing: {len(barcodes)}") if len(barcodes) != 0 else None
 
@@ -509,11 +518,34 @@ def main_loop():
         EncodedData.clear()
         EncodedData = barcodes.copy()
 
+        # The reader re-reports every tag in its field several times a second,
+        # so without this the same barcodes are re-requested on every tick. Drop
+        # anything already fetched inside the TTL, but flash its row instead of
+        # discarding it silently so an item already on screen still highlights
+        # when it is scanned again. Stamping inside the loop also collapses
+        # duplicates the reader produced within this same tick.
+        now = time.monotonic()
+        ttl = configs['FetchTTL']
+        fresh = []
+        for barcode in barcodes:
+            last_fetch = fetchedAt.get(barcode)
+            if last_fetch is not None and now - last_fetch < ttl:
+                window.flash_barcode(barcode)
+                continue
+            fetchedAt[barcode] = now
+            fresh.append(barcode)
+
+        # Entries are only revisited when their barcode is re-scanned, so sweep
+        # out the expired ones here to stop the cache growing across a shift.
+        if len(fetchedAt) > 5000:
+            for key in [k for k, t in fetchedAt.items() if now - t >= ttl]:
+                del fetchedAt[key]
+
         # Form API request urls if there are any barcodes decoded
-        if len(barcodes) > 0:
-            batch_size = min(len(barcodes), configs['BatchSize'])
-            batch = barcodes[:batch_size]
-            barcodes = barcodes[batch_size:]
+        if fresh:
+            batch_size = min(len(fresh), configs['BatchSize'])
+            batch = fresh[:batch_size]
+            barcodes = fresh[batch_size:]
 
             urls = ApiRequests.generate_urls(
                 configs['ReporterApiUrl'],
@@ -525,8 +557,6 @@ def main_loop():
             # Start the DataFetcher thread with data_queue for communication
             fetcher = DataFetcher(urls, configs['APIToken'], data_queue)
             fetcher.start()
-        else:
-            pass
 
     def update_ui_from_queue():
         # Check if there is data in the queue
