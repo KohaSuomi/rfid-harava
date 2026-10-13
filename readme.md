@@ -68,10 +68,13 @@ python3 -m venv .venv
 .venv/bin/pip install "PySide6==6.8.0.2" requests
 ```
 
+Windowsilla venvin tulkki on `.venv\Scripts\python.exe`, joten korvaa alla
+olevat `.venv/bin/python`-polut vastaavalla polulla.
+
 ### Tarkistuksen suorittaminen
 
 ```bash
-python tools/ttldedup_check.py
+.venv/bin/python tools/ttldedup_check.py
 ```
 
 Se ajaa ohjelman kahdesti ja tulostaa yhteenvedon:
@@ -98,7 +101,7 @@ Argumentit ovat `[seconds] [python] [tags]`, kaikki valinnaisia:
 Esimerkki, 30 sekunnin ajo 16 kohteen hyllyllä:
 
 ```bash
-python tools/ttldedup_check.py 30 .venv/bin/python 16
+.venv/bin/python tools/ttldedup_check.py 30 .venv/bin/python 16
 ```
 
 ### Tuloksen tulkinta

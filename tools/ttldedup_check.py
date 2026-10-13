@@ -1,6 +1,6 @@
 """One-command check of the TTL dedup fix. No RFID reader, no Windows needed.
 
-    python tools/ttldedup_check.py [seconds] [python] [tags]
+    .venv/bin/python tools/ttldedup_check.py [seconds] [python] [tags]
 
 Starts a throwaway fake Koha API on loopback, points a copy of the app's
 config at it, runs the real main.py while simulating scans by appending to
@@ -68,9 +68,6 @@ class FakeKoha(BaseHTTPRequestHandler):
         pass
 
     def _send(self, obj):
-        global requests_seen
-        with _lock:
-            requests_seen += 1
         body = json.dumps(obj).encode()
         self.send_response(200)
         self.send_header('Content-Type', 'application/json')
@@ -79,10 +76,35 @@ class FakeKoha(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
+        # The report request. Only these are counted, so the startup token
+        # POST below cannot throw the number off.
+        global requests_seen
+        with _lock:
+            requests_seen += 1
         self._send([ITEM])
 
     def do_POST(self):
         self._send({"access_token": "fake-token", "expires_in": 3600})
+
+
+def preflight(python):
+    """Fail clearly if the interpreter cannot run the app."""
+    proc = subprocess.run([python, '-c', 'import PySide6'],
+                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    if proc.returncode != 0:
+        raise SystemExit(
+            f'{python} cannot import PySide6, which the app needs.\n'
+            f'Install it for that interpreter, or pass one that already has it:\n'
+            f'  {python} -m pip install "PySide6==6.8.0.2" requests\n'
+            f'  .venv/bin/python tools/ttldedup_check.py [seconds] /path/to/venv/bin/python [tags]')
+
+
+def tail(path, lines=15):
+    try:
+        with open(path, errors='replace') as fh:
+            return ''.join(fh.readlines()[-lines:]).rstrip()
+    except OSError:
+        return '(no log written)'
 
 
 def setup(api_port, fetchttl):
@@ -128,23 +150,40 @@ def run(python, seconds, fetchttl, tags):
     env['SCAN_TAGS'] = str(tags)
     env['HARAVA_WORK'] = WORK
 
-    proc = subprocess.Popen([python, SIM_RUN],
-                            cwd=WORK, env=env,
-                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    time.sleep(seconds)
-    proc.terminate()
-    try:
-        proc.wait(timeout=10)
-    except subprocess.TimeoutExpired:
-        proc.kill()
+    # Clear any stats left by an earlier run, so a crashed app cannot be
+    # mistaken for a run that wrote these numbers.
+    stats_path = os.path.join(WORK, 'simstats.json')
+    for stale in (stats_path, stats_path + '.tmp'):
+        try:
+            os.remove(stale)
+        except FileNotFoundError:
+            pass
+
+    stderr_path = os.path.join(WORK, 'app-stderr.log')
+    with open(stderr_path, 'w') as errlog:
+        proc = subprocess.Popen([python, SIM_RUN],
+                                cwd=WORK, env=env,
+                                stdout=subprocess.DEVNULL, stderr=errlog)
+        time.sleep(seconds)
+        crashed_early = proc.poll() is not None
+        if not crashed_early:
+            proc.terminate()
+        try:
+            proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            proc.kill()
     httpd.shutdown()
 
-    try:
-        with open(os.path.join(WORK, 'simstats.json')) as fh:
-            st = json.load(fh)
-    except (OSError, ValueError):
-        st = {'flashes': 0, 'scans': 0}
-    return {'requests': requests_seen - 1, **st}  # -1 = startup token POST
+    if not os.path.exists(stats_path):
+        why = 'it exited before writing any stats' if crashed_early \
+            else 'no stats were written while it ran'
+        raise SystemExit(
+            f'The app did not run under {python}: {why}.\n'
+            f'Last lines of {stderr_path}:\n{tail(stderr_path)}')
+
+    with open(stats_path) as fh:
+        st = json.load(fh)
+    return {'requests': requests_seen, **st}
 
 
 def main():
@@ -152,6 +191,8 @@ def main():
     python = sys.argv[2] if len(sys.argv) > 2 else sys.executable
     python = python or sys.executable
     tags = int(sys.argv[3]) if len(sys.argv) > 3 else 1
+
+    preflight(python)
 
     print(f'repo   : {REPO}')
     print(f'python : {python}')
