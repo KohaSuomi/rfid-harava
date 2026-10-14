@@ -77,6 +77,11 @@ jobs:
             Write-Error "Configs\ConfigBase.ini has version '$version' but the tag is '$tag'. Update the version before tagging."
             exit 1
           }
+          $changelog = Get-Content 'CHANGELOG.md' -Raw -Encoding utf8
+          if ($changelog -notmatch "(?m)^##\s+\[$([regex]::Escape($version))\]") {
+            Write-Error "CHANGELOG.md has no '## [$version]' section. Add the release notes before tagging."
+            exit 1
+          }
           Write-Host "Version $version matches tag $tag"
 
       - name: Build executable and assemble release folder
@@ -129,7 +134,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $version = (Select-String -Path 'Configs\ConfigBase.ini' -Pattern '^\s*version\s*=\s*(.+)$').Matches.Groups[1].Value.Trim()
+          $changelog = Get-Content 'CHANGELOG.md' -Raw -Encoding utf8
+          $pattern = "(?sm)^##\s+\[$([regex]::Escape($version))\].*?(?=^##\s+\[|\z)"
+          $match = [regex]::Match($changelog, $pattern)
+          if (-not $match.Success) {
+            throw "CHANGELOG.md has no '## [$version]' section. Add the release notes before tagging."
+          }
+          Set-Content 'release-notes.md' $match.Value.Trim() -Encoding utf8
           gh release create $env:GITHUB_REF_NAME "Harava$version.zip" `
             --repo $env:GITHUB_REPOSITORY `
             --title "RFID Harava $version" `
-            --generate-notes
+            --notes-file 'release-notes.md'
