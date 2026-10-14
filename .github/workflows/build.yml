@@ -98,7 +98,8 @@ jobs:
           if ($proc.HasExited) {
             throw "Executable exited early with code $($proc.ExitCode)"
           }
-          Stop-Process -Id $proc.Id -Force
+          taskkill /PID $proc.Id /T /F | Out-Null
+          Start-Sleep -Seconds 2
           $log = Get-ChildItem 'Release\RfidHarava\logs\output_*.log' -ErrorAction SilentlyContinue
           if (-not $log) {
             throw 'Executable did not write a log file - it did not start correctly'
@@ -107,6 +108,7 @@ jobs:
             throw 'Log file is empty - the app produced no output'
           }
           Write-Host "Smoke test passed, log: $($log.Name)"
+          Remove-Item 'Release\RfidHarava\logs\output_*.log' -Force
 
       - name: Package release archive
         shell: pwsh
