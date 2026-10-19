@@ -5,6 +5,16 @@ GitHub-julkaisun tagia (`v1.1`) ja `Configs/ConfigBase.ini`-tiedoston versiota.
 Julkaisun tiedot luetaan tästä tiedostosta, joten lisää uusi osio ennen kuin
 teet version mukaisen tagin.
 
+## [1.1.1] - 2026-10-19
+
+RFID Harava 1.1.1 on korjausjulkaisu, joka sisältää ohjelman sekä ohjeet käyttöönottoon, RFID-skannereiden konfigurointiin ja ohjelman käyttöön.
+
+### Korjattu
+
+- **Rivin vilkkuminen (paikannus) ei enää jatku koko `fetchttl`-jaksoa.** Versiossa 1.1 vilkkuva rivi saattoi jäädä vilkkumaan lähes koko `fetchttl`-ajan, vaikka tunniste oli jo poistunut lukukentästä. Lisäksi uuden, välimuistissa olevan niteen lukeminen saattoi katkaista muiden rivien vilkkumisen kesken. Syynä oli, että viivakoodijonoa ei tyhjennetty joka kierroksella, jolloin lukijan toistuvasti ilmoittamat viivakoodit kertyivät jonoon ja sama rivi vilkkui uudelleen joka kierroksella. Nyt jono tyhjennetään joka kierroksella: rivi vilkkuu vain, kun tunniste on lukukentässä, ja himmenee pian sen jälkeen kun tunniste poistuu.
+
+**Full Changelog**: https://github.com/KohaSuomi/rfid-harava/compare/v1.1...v1.1.1
+
 ## [1.1] - 2026-10-14
 
 RFID Harava 1.1 -ohjelmapaketti sisältää ohjelman sekä ohjeet käyttöönottoon, RFID-skannereiden konfigurointiin ja ohjelman käyttöön. Paketissa ohjelma on omassa kansiossaan ja ohjeet omassaan.
