@@ -535,6 +535,11 @@ def main_loop():
             fetchedAt[barcode] = now
             fresh.append(barcode)
 
+        # The queue is fully consumed every tick: a cached barcode was flashed
+        # above and must not be carried over, or the reader re-reporting it
+        # would re-flash it on every tick for the rest of the TTL.
+        barcodes = []
+
         # Entries are only revisited when their barcode is re-scanned, so sweep
         # out the expired ones here to stop the cache growing across a shift.
         if len(fetchedAt) > 5000:

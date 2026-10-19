@@ -214,8 +214,16 @@ def main():
     assert before['requests'] > 10, 'baseline should spam the API'
     assert after['requests'] <= 2, f'expected ~1 request, got {after["requests"]}'
     assert after['flashes'] > 0, 'nothing flashed - locate feature lost!'
-    assert after['scans'] == before['scans'], \
-        'both runs must simulate the same number of scans'
+    # Each decoded report is either fetched or flashed once, so flashes cannot
+    # exceed scans. More than that means the barcode queue is not drained every
+    # tick and cached barcodes are re-flashed on every timer tick for the TTL.
+    assert after['flashes'] <= after['scans'], (
+        f'{after["flashes"]} flashes for {after["scans"]} scans: the barcode '
+        'queue is not being drained each tick')
+    # The two runs are wall-clock bounded, so allow a little jitter rather
+    # than demanding exactly equal scan counts.
+    assert abs(after['scans'] - before['scans']) <= max(3, before['scans'] // 10), \
+        'both runs must simulate a comparable number of scans'
 
     print(f'{before["requests"]} requests -> {after["requests"]} request, '
           f'while still flashing {after["flashes"]} times.')
