@@ -7,6 +7,7 @@ config at it, runs the real main.py while simulating scans by appending to
 main.barcodes, and prints how many Koha requests that turned into.
 """
 
+import configparser
 import json
 import os
 import shutil
@@ -76,11 +77,12 @@ class FakeKoha(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
-        # The report request. Only these are counted, so the startup token
-        # POST below cannot throw the number off.
+        # Count only report fetches. Answering any other GET that might appear
+        # later must not inflate the number; the token POST is separate anyway.
         global requests_seen
-        with _lock:
-            requests_seen += 1
+        if self.path.startswith('/reports'):
+            with _lock:
+                requests_seen += 1
         self._send([ITEM])
 
     def do_POST(self):
@@ -89,11 +91,11 @@ class FakeKoha(BaseHTTPRequestHandler):
 
 def preflight(python):
     """Fail clearly if the interpreter cannot run the app."""
-    proc = subprocess.run([python, '-c', 'import PySide6'],
+    proc = subprocess.run([python, '-c', 'import PySide6, requests'],
                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     if proc.returncode != 0:
         raise SystemExit(
-            f'{python} cannot import PySide6, which the app needs.\n'
+            f'{python} cannot import PySide6 and requests, which the app needs.\n'
             f'Install it for that interpreter, or pass one that already has it:\n'
             f'  {python} -m pip install "PySide6==6.8.0.2" requests\n'
             f'  .venv/bin/python tools/ttldedup_check.py [seconds] /path/to/venv/bin/python [tags]')
@@ -114,28 +116,32 @@ def setup(api_port, fetchttl):
     for f in os.listdir(f'{REPO}/resources'):
         shutil.copy(f'{REPO}/resources/{f}', f'{WORK}/resources/{f}')
 
-    with open(f'{REPO}/Configs/ConfigBase.ini') as fh:
-        cfg = fh.read()
-    cfg = cfg.replace('https://kimppa.koha-suomi.fi/api/v1/oauth/token',
-                      f'http://127.0.0.1:{api_port}/oauth/token')
-    cfg = cfg.replace('https://kimppa.koha-suomi.fi/api/v1/contrib/kohasuomi/reportservices/reports',
-                      f'http://127.0.0.1:{api_port}/reports')
-    cfg = cfg.replace('apitoken = ', 'apitoken = fake-token')
-    cfg = cfg.replace('apitokenlastupdated = ', 'apitokenlastupdated = 9999999999')
-    cfg = cfg.replace('reportid = ', 'reportid = 42')
-    cfg = cfg.replace('client = ', 'client = testclient')
-    cfg = cfg.replace('secret = ', 'secret = testsecret')
-    cfg = cfg.replace('fetchttl = 60', f'fetchttl = {fetchttl}')
-    with open(f'{WORK}/Configs/config.ini', 'w') as fh:
-        fh.write(cfg)
+    # Use configparser rather than string replacement: a changed default or a
+    # different spacing in ConfigBase.ini would make replace() silently no-op,
+    # and the run would then measure the wrong TTL while still looking valid.
+    cfg = configparser.RawConfigParser()
+    cfg.read(f'{REPO}/Configs/ConfigBase.ini', encoding='utf-8')
+    cfg.set('API credentials', 'apitoken', 'fake-token')
+    cfg.set('API credentials', 'apitokenlastupdated', '9999999999')
+    cfg.set('API URLS', 'apiendpointurl',
+            f'http://127.0.0.1:{api_port}/oauth/token')
+    cfg.set('API URLS', 'reporterapiurl',
+            f'http://127.0.0.1:{api_port}/reports')
+    cfg.set('Other', 'reportid', '42')
+    cfg.set('Other', 'fetchttl', str(fetchttl))
+    cfg.set('API', 'client', 'testclient')
+    cfg.set('API', 'secret', 'testsecret')
+    with open(f'{WORK}/Configs/config.ini', 'w', encoding='utf-8') as fh:
+        cfg.write(fh)
 
-    with open(f'{REPO}/Configs/UserSettingsBase.ini') as fh:
-        users = fh.read().replace('collectall = False', 'collectall = True')
-    with open(f'{WORK}/Configs/UserSettings.ini', 'w') as fh:
-        fh.write(users)
+    users = configparser.RawConfigParser()
+    users.read(f'{REPO}/Configs/UserSettingsBase.ini', encoding='utf-8')
+    users.set('Conditions', 'collectall', 'True')
+    with open(f'{WORK}/Configs/UserSettings.ini', 'w', encoding='utf-8') as fh:
+        users.write(fh)
 
 
-def run(python, seconds, fetchttl, tags):
+def run(python, seconds, fetchttl, tags, touch_settings=False):
     global requests_seen
     api_port = free_port()
     httpd = ThreadingHTTPServer(('127.0.0.1', api_port), FakeKoha)
@@ -164,7 +170,21 @@ def run(python, seconds, fetchttl, tags):
         proc = subprocess.Popen([python, SIM_RUN],
                                 cwd=WORK, env=env,
                                 stdout=subprocess.DEVNULL, stderr=errlog)
-        time.sleep(seconds)
+        if not touch_settings:
+            time.sleep(seconds)
+        else:
+            # Wait for the startup fetch before touching, so the touch is a
+            # change relative to the mtime the app has already recorded. A
+            # fixed half-time point could land before the first tick on a slow
+            # start and then simply set the baseline instead of changing it.
+            deadline = time.monotonic() + seconds
+            while requests_seen == 0 and time.monotonic() < deadline:
+                time.sleep(0.02)
+            # Bump only the mtime, exactly as the settings panel does when the
+            # criteria are edited. The content is unchanged, so a second fetch
+            # can only come from the cache being invalidated.
+            os.utime(os.path.join(WORK, 'Configs', 'UserSettings.ini'), None)
+            time.sleep(max(0.0, deadline - time.monotonic()))
         crashed_early = proc.poll() is not None
         if not crashed_early:
             proc.terminate()
@@ -174,11 +194,14 @@ def run(python, seconds, fetchttl, tags):
             proc.kill()
     httpd.shutdown()
 
-    if not os.path.exists(stats_path):
-        why = 'it exited before writing any stats' if crashed_early \
-            else 'no stats were written while it ran'
+    if crashed_early:
         raise SystemExit(
-            f'The app did not run under {python}: {why}.\n'
+            f'The app exited before the {seconds}s run finished under {python}.\n'
+            f'Last lines of {stderr_path}:\n{tail(stderr_path)}')
+
+    if not os.path.exists(stats_path):
+        raise SystemExit(
+            f'The app did not run under {python}: no stats were written.\n'
             f'Last lines of {stderr_path}:\n{tail(stderr_path)}')
 
     with open(stats_path) as fh:
@@ -200,20 +223,31 @@ def main():
 
     before = run(python, seconds, 0, tags)
     after = run(python, seconds, 60, tags)
+    changed = run(python, seconds, 60, tags, touch_settings=True)
 
-    hdr = f'{"":<22}{"scans":>8}{"Koha requests":>16}{"flashes":>10}'
+    hdr = f'{"":<30}{"scans":>8}{"Koha requests":>16}{"flashes":>10}'
     print(hdr)
     print('-' * len(hdr))
-    print(f'{"fetchttl = 0 (before)":<22}{before["scans"]:>8}'
-          f'{before["requests"]:>16}{before["flashes"]:>10}')
-    print(f'{"fetchttl = 60 (after)":<22}{after["scans"]:>8}'
-          f'{after["requests"]:>16}{after["flashes"]:>10}')
+    for label, st in (('ttl = 0 (no dedup)', before),
+                      ('ttl = 60 (dedup)', after),
+                      ('ttl = 60 + criteria change', changed)):
+        print(f'{label:<30}{st["scans"]:>8}'
+              f'{st["requests"]:>16}{st["flashes"]:>10}')
 
     print()
     assert before['scans'] > 30, 'test invalid: not enough simulated scans'
     assert before['requests'] > 10, 'baseline should spam the API'
+    assert before['flashes'] == 0, (
+        'nothing is cached at ttl = 0, so nothing should flash')
     assert after['requests'] <= 2, f'expected ~1 request, got {after["requests"]}'
     assert after['flashes'] > 0, 'nothing flashed - locate feature lost!'
+    # Every scan after the first fetch should flash once, so the upper bound
+    # alone would let a partial loss through. Allow a small margin: the first
+    # barcode is fetched rather than flashed, and a scan can occasionally land
+    # between the queue being read and cleared.
+    assert after['flashes'] >= after['scans'] - max(3, after['scans'] // 20), (
+        f'only {after["flashes"]} flashes for {after["scans"]} scans: cached '
+        're-reads are no longer being highlighted')
     # Each decoded report is either fetched or flashed once, so flashes cannot
     # exceed scans. More than that means the barcode queue is not drained every
     # tick and cached barcodes are re-flashed on every timer tick for the TTL.
@@ -225,9 +259,20 @@ def main():
     assert abs(after['scans'] - before['scans']) <= max(3, before['scans'] // 10), \
         'both runs must simulate a comparable number of scans'
 
+    # Touching UserSettings.ini mid-run must invalidate the cache. The tag is
+    # still in the reader field, so it is re-read and must be fetched again:
+    # one request at startup and one after the criteria change. Without the
+    # mtime check the second read stays suppressed until the TTL expires.
+    assert changed['requests'] == 2, (
+        'a criteria change mid-run should cause exactly one extra request '
+        f'(2 total), got {changed["requests"]}')
+
     print(f'{before["requests"]} requests -> {after["requests"]} request, '
           f'while still flashing {after["flashes"]} times.')
-    print('\nPASS: dedup works and locate-by-flashing is preserved.')
+    print(f'A criteria change mid-run added one request '
+          f'({changed["requests"]} total), as expected.')
+    print('\nPASS: dedup works, locate-by-flashing is preserved, and changing '
+          'the search criteria clears the cache.')
     print(f'(work dir: {WORK} - safe to delete)')
 
 
