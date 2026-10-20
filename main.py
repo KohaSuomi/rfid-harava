@@ -17,6 +17,7 @@ import Decoders.NumericDecoder as NumericDecoder
 import Decoders.SevenBitDecoder as SevenBitDecoder
 
 import DataHandling.Messagesplitter as Messagesplitter
+import DataHandling.FetchCache as FetchCache
 
 from Decoders.FINDecoder import FINDecoder
 
@@ -42,6 +43,11 @@ RawResponses = []
 # re-reports every tag in its field continuously, so without this the same
 # items would be re-requested on every timer tick. See fetch_data.
 fetchedAt = {}
+# mtime of Configs/UserSettings.ini when fetchedAt was last cleared. The search
+# criteria are read from that file per request, so a change to it must drop the
+# cache or re-scanned items would keep the old criteria's result until the TTL
+# expires. See fetch_data.
+settingsMtime = None
 
 def read_config():
     config = configparser.RawConfigParser()
@@ -253,6 +259,13 @@ def main_loop():
 
     # Expose restart_listener to the window for UI integration
     window.restart_listener = restart_listener
+
+    def reset_fetch_cache():
+        # Called when the user clears the results list, so a fresh harvest
+        # re-fetches everything instead of reusing the TTL cache.
+        fetchedAt.clear()
+
+    window.reset_fetch_cache = reset_fetch_cache
     
     def update_config_on_shutdown():
         """Updates the config file with the last shutdown timestamp."""
@@ -324,6 +337,7 @@ def main_loop():
         global RawResponses
         global EncodedData
         global fetchedAt
+        global settingsMtime
 
         logger.debug(f"Barcodes available before processing: {len(barcodes)}") if len(barcodes) != 0 else None
 
@@ -518,33 +532,34 @@ def main_loop():
         EncodedData.clear()
         EncodedData = barcodes.copy()
 
+        # The search criteria live in UserSettings.ini and are applied per
+        # request, but the cache otherwise expires only by time. When the file
+        # changes, drop it so items harvested again are judged against the new
+        # criteria instead of being suppressed until the TTL runs out. The
+        # settings panel rewrites this file on every edit, so its mtime is the
+        # signal; OSError covers a checkout where it does not exist yet.
+        try:
+            settings_mtime = os.path.getmtime('Configs/UserSettings.ini')
+        except OSError:
+            settings_mtime = None
+        if FetchCache.settings_changed(settings_mtime, settingsMtime):
+            settingsMtime = settings_mtime
+            fetchedAt.clear()
+
         # The reader re-reports every tag in its field several times a second,
-        # so without this the same barcodes are re-requested on every tick. Drop
-        # anything already fetched inside the TTL, but flash its row instead of
-        # discarding it silently so an item already on screen still highlights
-        # when it is scanned again. Stamping inside the loop also collapses
-        # duplicates the reader produced within this same tick.
+        # so without this the same barcodes are re-requested on every tick.
+        # Cached re-reads are flashed instead of discarded, so an item already
+        # on screen still highlights when it is scanned again. take() also
+        # drains the queue, so cached barcodes cannot pile up across ticks.
         now = time.monotonic()
         ttl = configs['FetchTTL']
-        fresh = []
-        for barcode in barcodes:
-            last_fetch = fetchedAt.get(barcode)
-            if last_fetch is not None and now - last_fetch < ttl:
-                window.flash_barcode(barcode)
-                continue
-            fetchedAt[barcode] = now
-            fresh.append(barcode)
-
-        # The queue is fully consumed every tick: a cached barcode was flashed
-        # above and must not be carried over, or the reader re-reporting it
-        # would re-flash it on every tick for the rest of the TTL.
-        barcodes = []
+        fresh, cached = FetchCache.take(barcodes, fetchedAt, now, ttl)
+        for barcode in cached:
+            window.flash_barcode(barcode)
 
         # Entries are only revisited when their barcode is re-scanned, so sweep
         # out the expired ones here to stop the cache growing across a shift.
-        if len(fetchedAt) > 5000:
-            for key in [k for k, t in fetchedAt.items() if now - t >= ttl]:
-                del fetchedAt[key]
+        FetchCache.sweep(fetchedAt, now, ttl)
 
         # Form API request urls if there are any barcodes decoded
         if fresh:

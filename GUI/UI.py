@@ -58,6 +58,13 @@ class MainWindow(QMainWindow):
         self.delete_button.clicked.connect(self.delete_selected_item)
         main_layout.addWidget(self.delete_button)
 
+        # Clear the whole results list. The search bar's own "Tyhjennä" only
+        # clears the search text, so the list needs its own control.
+        self.clear_list_button = QPushButton("Tyhjennä lista")
+        self.clear_list_button.clicked.connect(
+            lambda: self.clear_table(self.table))
+        main_layout.addWidget(self.clear_list_button)
+
         # Initialize configuration
         self.user_config = configparser.RawConfigParser()
         self.user_config_file = 'Configs/UserSettings.ini'
@@ -452,6 +459,12 @@ class MainWindow(QMainWindow):
         table.setRowCount(0)
         self._stop_all_flashes()
         self.barcode_to_row.clear()
+        # Drop the fetch cache too, so items scanned again after clearing are
+        # fetched fresh rather than suppressed by the TTL. main.py assigns this
+        # once the window exists; the guard keeps the method usable without it.
+        reset_fetch_cache = getattr(self, 'reset_fetch_cache', None)
+        if reset_fetch_cache is not None:
+            reset_fetch_cache()
 
     def fetch_and_populate_data(self):
         base_url = ""
