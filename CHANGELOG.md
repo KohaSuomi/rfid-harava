@@ -5,6 +5,20 @@ GitHub-julkaisun tagia (`v1.1`) ja `Configs/ConfigBase.ini`-tiedoston versiota.
 Julkaisun tiedot luetaan tästä tiedostosta, joten lisää uusi osio ennen kuin
 teet version mukaisen tagin.
 
+## [1.1.2] - 2026-10-20
+
+RFID Harava 1.1.2 on korjausjulkaisu, joka sisältää ohjelman sekä ohjeet käyttöönottoon, RFID-skannereiden konfigurointiin ja ohjelman käyttöön.
+
+### Korjattu
+
+- **Hakuehtojen muuttaminen ei enää jätä vanhoja tuloksia välimuistiin.** Aiemmin `fetchttl`-välimuisti esti saman viivakoodin hakemisen uudelleen vielä sen jälkeen, kun hakuehtoja oli muutettu, joten uudelleen luettu nide arvioitiin vanhoilla ehdoilla kunnes `fetchttl` ehti kulua. Nyt `Configs/UserSettings.ini`-tiedoston muutosaikaa seurataan ja välimuisti tyhjennetään heti, kun hakuehdot muuttuvat.
+
+### Mitä uutta
+
+- **Tulosten lista voidaan tyhjentää omalla painikkeella.** Hakuehtojen muuttaminen ei tyhjennä listaa, joten eri hakuehdoilla löytyneet tulokset voi kerätä samaan listaan. Kun lista halutaan tyhjentää, siihen on nyt oma **Tyhjennä lista** -painike, joka tyhjentää myös hakuvälimuistin.
+
+**Full Changelog**: https://github.com/KohaSuomi/rfid-harava/compare/v1.1.1...v1.1.2
+
 ## [1.1.1] - 2026-10-19
 
 RFID Harava 1.1.1 on korjausjulkaisu, joka sisältää ohjelman sekä ohjeet käyttöönottoon, RFID-skannereiden konfigurointiin ja ohjelman käyttöön.
