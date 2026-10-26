@@ -5,7 +5,7 @@
 RFID Harava on ohjelma, joka mahdollistaa RFID-tunnisteilla merkityn kirjastoaineiston massaskannauksen.
 Se on suunniteltu käytettäväksi Koha-kirjastojärjestelmää käyttävissä kirjastoissa ja tukee kokoelmanhoidon tehtäviä.
 
-![Screenshot](/docs/screenshot.PNG)
+![Screenshot](/docs/harava-1.1.2.png)
 
 ## Ohjelman lataaminen
 
