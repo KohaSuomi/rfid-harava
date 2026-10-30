@@ -11,7 +11,7 @@ Se on suunniteltu käytettäväksi Koha-kirjastojärjestelmää käyttävissä k
 
 Ohjelmapaketti löytyy tämän github sivun "Releases" -osiosta. Ohjelmapaketti pitää sisällään ohjelman ja ohjeet ohjelman käyttöönottoon, eri RFID-skannereiden konfigurointiin ja ohjelman käyttöön.
 
-Eri versioiden muutokset on lueteltu [CHANGELOG.md](CHANGELOG.md)-tiedostossa ja kunkin GitHub-julkaisun yhteydessä.
+Eri versioiden muutokset on lueteltu [CHANGELOG.md](CHANGELOG.md)-tiedostossa ja kunkin GitHub-julkaisun yhteydessä. Käytä aina ohjelmiston uusinta versiota.
 
 ## Taustaa
 
